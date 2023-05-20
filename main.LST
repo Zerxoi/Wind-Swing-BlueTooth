@@ -1,0 +1,239 @@
+C51 COMPILER V9.52.0.0   MAIN                                                              05/17/2017 21:50:29 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN main.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE main.c LARGE BROWSE INCDIR(..\Wind Swing) DEBUG OBJECTEXTEND TABS(2)
+
+line level    source
+
+   1          /*-----------------------------------------------------------------------------------------------------
+   2                                                          作者：Zerxoi
+   3          -------------------------------------------------------------------------------------------------------
+   4          --                                          重力加速度 g:9.80665                                      --
+   5          --                                              杆长 l:0.60m                                         --
+   6          --                                         角速度 omega：4.0428                                      --
+   7          --                                      万向节到地面高度 H:1.06m                                     --
+   8          -------------------------------------------------------------------------------------------------------
+   9          --                                      单片机型号：STC15W4K56S                                      --
+  10          --                            MAIN_Fosc:11059200      (Define in STC15Fxxx.h)                        --
+  11          --                                下载串口    RXD1 P3.0     TXD1  P3.1                               --
+  12          --                                蓝牙串口    RXD2 P1.0     TXD2  P1.1                               --
+  13          --                                    P0.0 M6050 SCL  P0.1 M6050 SDA                                 --
+  14          -------------------------------------------------硬件PWM-----------------------------------------------
+  15          --                      P2.3(PWM5)  P0.2(+) P0.3(-) PWM输出控制X轴转角  Motor1    (UP)               --
+  16          --                      P2.2(PWM4)  P0.4(+) P0.5(-) PWM输出控制X轴转角  Motor2   (DOWN)              
+             ---
+  17          --                      P2.1(PWM3)  P0.6(+) P0.7(-) PWM输出控制Y轴转角  Motor3    (UP)               
+             ---
+  18          --                      P3.7(PWM2)  P2.0(+) P4.4(-) PWM输出控制Y轴转角  Motor4   (DOWN)              
+             ---
+  19          -----------------------------------------------------------------------------------------------------*/
+  20          
+  21          #include "STC15Fxxxx.h"
+  22          #include "timer0.h"
+  23          #include "ser_printf.h"
+  24          #include "i2c.h"
+  25          #include "m6050.h"
+  26          #include "kalman.h"
+  27          #include "mathmod.h"
+  28          #include "pwm.h"
+  29          #include "motor.h"
+  30          #include "bluetooth.h"
+  31          #include <stdio.h>
+  32          #include <math.h>
+  33          char count;                                                               //UART1数据打印计数
+  34          
+  35          m6050_structdef m6050_structure;                                          //m6050结构体 (unsigned int)ax,ay,az,gx,gy  (float
+             -)angle_x,angle_y
+  36          m6050_zerodriftdef m6050_zerodrift;                                       //m6050零点漂移结构体 (unsigned int)ax,ay,az
+             -,gx,gy
+  37          pid_structdef pid_structure;                                              //pid结构体 (float)kp,ki,kd,x_integral,x_pre_error,x
+             -_output,y_integral,y_pre_error,y_output
+  38          mathmod_structdef mathmod_structure;                                      //math model结构体 (float) sumtime,angle_x,angle
+             -_y
+  39          bluetooth_structdef bluetooth_structure;
+  40          
+  41          int main()
+  42          {
+  43   1        i2c_init();                                                             //i2c初始化  scl=1 sda=1
+  44   1        pwm_init();                                                             //pwm初始化 推挽输出 0%占空比
+  45   1        motor_gpio_config();                                                    //motor 引脚配置
+  46   1        m6050_init();                                                           //GYRO Full Scale  +/- 250,ACC Full Scale   +/- 2g
+  47   1        m6050_initstruct(& m6050_structure);                                    //m6050结构体初始化 成员置零
+  48   1        m6050_initzerodrift(& m6050_zerodrift);                                 //m6050零点漂移初始化
+C51 COMPILER V9.52.0.0   MAIN                                                              05/17/2017 21:50:29 PAGE 2   
+
+  49   1        m6050_getzerodrift(& m6050_zerodrift);                                  //取100次ax,ay,gx,gy取平均值,赋值给m6050_
+             -zerodrift
+  50   1        mathmod_initstruct(& mathmod_structure);                                //math model结构体初始化 成员置零 
+  51   1        pid_initstruct(& pid_structure);                                        //pid结构体初始化 成员置零
+  52   1        ser_printf_init();                                                      //T2 1T 115200bps
+  53   1        bluetooth_init();
+  54   1        bluetooth_initstruct(& bluetooth_structure);
+  55   1        Timer0Init();                                                           //T0中断设置 12ms
+  56   1        while(1)
+  57   1        {
+  58   2          if (count==5)
+  59   2          {
+  60   3            //串口打印时间 3.5ms
+  61   3            count=0;
+  62   3      
+  63   3            print_x(& m6050_structure,& mathmod_structure);                     //串口打印 AngleX  测定角度 设定角
+             -度
+  64   3            print_y(& m6050_structure,& mathmod_structure);                     //串口打印 AngleY  测定角度 设定角
+             -度
+  65   3      //      print_pid(& pid_structure);
+  66   3      //      print_gxy(& m6050_structure);
+  67   3      //      print_m6050data();                                                    //打印从m6050读取的加速度值
+  68   3      //      print_zerodrift(& m6050_zerodrift);                                   //打印零点漂移
+  69   3      //      print_axyz(& m6050_structure);                                        //打印消除零点漂移的从m6050读取的加�
+             -�度值 
+  70   3          }
+  71   2        }
+  72   1      }
+  73          void t0_int() interrupt 1                                                 //12ms 进入中断
+  74          {
+  75   1        //中断执行时间 6ms
+  76   1        EA=0;
+  77   1        TL0=0xCD;                                                               //设置定时初值
+  78   1        TH0=0xD4;                                                               //设置定时初值
+  79   1        count++;
+  80   1        m6050_getstructure(& m6050_structure,& m6050_zerodrift);                //获取去除零点漂移m6050结构体
+  81   1        angle_calcu(& m6050_structure);                                         //将m6050读取出来的整数转化成实际值，�
+             -��进行kalman滤波
+  82   1        switch (bluetooth_structure.mode)                                       //数学模型选择
+  83   1        {
+  84   2          case (1):
+  85   2          {
+  86   3            mathmod_getSTILL(& mathmod_structure,& bluetooth_structure);
+  87   3            pid_structure.kp=KP1;
+  88   3            pid_structure.ki=KI1;
+  89   3            pid_structure.kd=KD1;
+  90   3            break;
+  91   3          }
+  92   2          case (2):
+  93   2          {
+  94   3            mathmod_getSHM(& mathmod_structure,& bluetooth_structure);
+  95   3            pid_structure.kp=KP2;
+  96   3            pid_structure.ki=KI2;
+  97   3            pid_structure.kd=KD2;
+  98   3            break;
+  99   3          }
+ 100   2          case (3):
+ 101   2          {
+ 102   3            mathmod_getUCM(& mathmod_structure,& bluetooth_structure);
+ 103   3            pid_structure.kp=KP2;
+ 104   3            pid_structure.ki=KI2;
+ 105   3            pid_structure.kd=KD2;
+C51 COMPILER V9.52.0.0   MAIN                                                              05/17/2017 21:50:29 PAGE 3   
+
+ 106   3            break;
+ 107   3          }
+ 108   2        }
+ 109   1        pid_getstruct(& pid_structure,& m6050_structure,& mathmod_structure);   //经数学模型与m6050数据比
+             -较进行pid得到pid值
+ 110   1        motor_contrl(& pid_structure);                                          //将pid值传给pwm,并对电机进行控制
+ 111   1        EA=1;
+ 112   1      }
+ 113          
+ 114          void bluetooth() interrupt 8
+ 115          {
+ 116   1        char temp;
+ 117   1        EA=0;
+ 118   1        if (S2CON&0x01)
+ 119   1        {
+ 120   2          S2CON&=0xFE;
+ 121   2          temp=S2BUF;
+ 122   2          switch (temp)
+ 123   2          {
+ 124   3            case '1':         //定点
+ 125   3            {
+ 126   4              bluetooth_structure.mode=1;
+ 127   4              break;
+ 128   4            }
+ 129   3            case '2':         //R+5
+ 130   3            {
+ 131   4              bluetooth_structure.r+=5;
+ 132   4              if (bluetooth_structure.r>30)
+ 133   4                bluetooth_structure.r=30;
+ 134   4              bluetooth_structure.angle_x=atan(cos(bluetooth_structure.angle)*bluetooth_structure.r/H)*57.295828;
+ 135   4              bluetooth_structure.angle_y=atan(sin(bluetooth_structure.angle)*bluetooth_structure.r/H)*57.295828;
+ 136   4              break;
+ 137   4            }
+ 138   3            case '3':         //R-5
+ 139   3            {
+ 140   4              bluetooth_structure.r-=5;
+ 141   4              if (bluetooth_structure.r<-30)
+ 142   4                bluetooth_structure.r=-30;
+ 143   4              bluetooth_structure.angle_x=atan(cos(bluetooth_structure.angle)*bluetooth_structure.r/H)*57.295828;
+ 144   4              bluetooth_structure.angle_y=atan(sin(bluetooth_structure.angle)*bluetooth_structure.r/H)*57.295828;
+ 145   4              break;
+ 146   4            }
+ 147   3            case '4':         //单摆
+ 148   3            {
+ 149   4              bluetooth_structure.mode=2;
+ 150   4              break;
+ 151   4            }
+ 152   3            case '5':         //Angle+30
+ 153   3            {
+ 154   4              bluetooth_structure.angle+=0.5235;
+ 155   4              if (bluetooth_structure.angle>3.14159)
+ 156   4                bluetooth_structure.angle=3.14159;
+ 157   4              bluetooth_structure.angle_x=atan(cos(bluetooth_structure.angle)*bluetooth_structure.r/H)*57.295828;
+ 158   4              bluetooth_structure.angle_y=atan(sin(bluetooth_structure.angle)*bluetooth_structure.r/H)*57.295828;
+ 159   4              break;
+ 160   4            }
+ 161   3            case '6':         //Angle-30
+ 162   3            {
+ 163   4              bluetooth_structure.angle-=0.5235;
+ 164   4              if (bluetooth_structure.angle<-3.14159)
+ 165   4                bluetooth_structure.angle=-3.14159;
+ 166   4              bluetooth_structure.angle_x=atan(cos(bluetooth_structure.angle)*bluetooth_structure.r/H)*57.295828;
+C51 COMPILER V9.52.0.0   MAIN                                                              05/17/2017 21:50:29 PAGE 4   
+
+ 167   4              bluetooth_structure.angle_y=atan(sin(bluetooth_structure.angle)*bluetooth_structure.r/H)*57.295828;
+ 168   4              break;
+ 169   4            }
+ 170   3            case '7':         //恢复
+ 171   3            {
+ 172   4              bluetooth_structure.angle_x=atan(cos(bluetooth_structure.angle)*bluetooth_structure.r/H)*57.295828;
+ 173   4              bluetooth_structure.angle_y=atan(sin(bluetooth_structure.angle)*bluetooth_structure.r/H)*57.295828;
+ 174   4              break;
+ 175   4            }
+ 176   3            case '8':         //圆周
+ 177   3            {
+ 178   4              bluetooth_structure.mode=3;
+ 179   4              break;
+ 180   4            }
+ 181   3            case '9':         //静止
+ 182   3            {
+ 183   4              pid_structure.kp=KP3;
+ 184   4              pid_structure.ki=KI3;
+ 185   4              pid_structure.kd=KD3;
+ 186   4              bluetooth_structure.angle_x=0;
+ 187   4              bluetooth_structure.angle_y=0;
+ 188   4              break;
+ 189   4            }
+ 190   3          }
+ 191   2        }
+ 192   1        if (S2CON&0x20)
+ 193   1        {
+ 194   2          S2CON&=0xFD;
+ 195   2        }
+ 196   1        EA=1;
+ 197   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1070    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =     95    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,13 @@
+"i2c.obj",
+"m6050.obj",
+"main.obj",
+"pid.obj",
+"ser_printf.obj",
+"pwm.obj",
+"timer0.obj",
+"mathmod.obj",
+"kalman.obj",
+"motor.obj",
+"bluetooth.obj" 
+TO "Wind Swing" 
+RAMSIZE(256) 

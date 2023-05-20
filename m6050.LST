@@ -1,0 +1,101 @@
+C51 COMPILER V9.52.0.0   M6050                                                             05/17/2017 21:50:28 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE M6050
+OBJECT MODULE PLACED IN m6050.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE m6050.c LARGE BROWSE INCDIR(..\Wind Swing) DEBUG OBJECTEXTEND TABS(2)
+
+line level    source
+
+   1          #include <stdio.h>
+   2          #include <math.h>
+   3          #include "STC15Fxxxx.h"
+   4          #include "m6050.h"
+   5          #include "i2c.h"
+   6          
+   7          void m6050_init()
+   8          {
+   9   1        i2c_writeadd(SlaveAddress,PWR_MGMT_1,0x00);
+  10   1        i2c_writeadd(SlaveAddress,SMPLRT_DIV,0x07);
+  11   1        i2c_writeadd(SlaveAddress,CONFIG,0x06);
+  12   1        i2c_writeadd(SlaveAddress,GYRO_CONFIG,0x00);    //GYRO Full Scale  +/- 250
+  13   1        i2c_writeadd(SlaveAddress,ACCEL_CONFIG,0x01);   //ACC Full Scale   +/- 2g
+  14   1      }
+  15          
+  16          void m6050_initstruct(m6050_structdef *m6050_structure) //Assigned one time
+  17          {
+  18   1        m6050_structure->ax=0;
+  19   1        m6050_structure->ay=0;
+  20   1        m6050_structure->az=0;
+  21   1        m6050_structure->gx=0;                //Can be omitted
+  22   1        m6050_structure->gy=0;                //Can be omitted
+  23   1        m6050_structure->angle_x=0.0;
+  24   1        m6050_structure->angle_y=0.0;
+  25   1      }
+  26          
+  27          int m6050_getvalue(unsigned char dvadd,unsigned char addhigh)
+  28          {
+  29   1        unsigned char h,l;
+  30   1        h=i2c_readadd(dvadd,addhigh);
+  31   1        l=i2c_readadd(dvadd,addhigh+1);
+  32   1        return (h<<8)+l;
+  33   1      }
+  34          
+  35          void m6050_initzerodrift(m6050_zerodriftdef *m6050_zerodrift)
+  36          {
+  37   1        m6050_zerodrift->ax=0;
+  38   1        m6050_zerodrift->ay=0;
+  39   1        m6050_zerodrift->az=0;
+  40   1        m6050_zerodrift->gx=0;
+  41   1        m6050_zerodrift->gy=0;
+  42   1      }
+  43          void m6050_getzerodrift(m6050_zerodriftdef *m6050_zerodrift)      //Initialize zero drift
+  44          {
+  45   1        int n;
+  46   1        long int sum_ax=0,sum_ay=0,sum_az=0,sum_gx=0,sum_gy=0;
+  47   1        for (n=2000;n>0;n--)                                            //次数加大，去除零点漂移效果稍好
+  48   1        {
+  49   2          sum_ax+=m6050_getvalue(SlaveAddress,ACCEL_XOUT_H);
+  50   2          sum_ay+=m6050_getvalue(SlaveAddress,ACCEL_YOUT_H);
+  51   2          sum_az+=m6050_getvalue(SlaveAddress,ACCEL_ZOUT_H);
+  52   2          sum_gx+=m6050_getvalue(SlaveAddress,GYRO_XOUT_H);
+  53   2          sum_gy+=m6050_getvalue(SlaveAddress,GYRO_YOUT_H);
+  54   2        }
+  55   1        m6050_zerodrift->ax=sum_ax/2000;
+C51 COMPILER V9.52.0.0   M6050                                                             05/17/2017 21:50:28 PAGE 2   
+
+  56   1        m6050_zerodrift->ay=sum_ay/2000;
+  57   1        m6050_zerodrift->az=sum_az/2000-16384;
+  58   1        m6050_zerodrift->gx=sum_gx/2000;  
+  59   1        m6050_zerodrift->gy=sum_gy/2000;
+  60   1      //  printf("ZERO DRIFT IS DONE\n");
+  61   1      //  printf("m6050_zerodrift->ax=%f\n",m6050_zerodrift->ax);
+  62   1      //  printf("m6050_zerodrift->ay=%f\n",m6050_zerodrift->ay);
+  63   1      //  printf("m6050_zerodrift->az=%f\n",m6050_zerodrift->az);
+  64   1      //  printf("m6050_zerodrift->gx=%f\n",m6050_zerodrift->gx);
+  65   1      //  printf("m6050_zerodrift->gy=%f\n",m6050_zerodrift->gy);
+  66   1      }
+  67          
+  68          void m6050_getstructure(m6050_structdef *m6050_structure,m6050_zerodriftdef *m6050_zerodrift)   //Get Clear
+             - Zero Drift Structure
+  69          {
+  70   1        m6050_structure->ax=m6050_getvalue(SlaveAddress,ACCEL_XOUT_H)-m6050_zerodrift->ax;
+  71   1        m6050_structure->ay=m6050_getvalue(SlaveAddress,ACCEL_YOUT_H)-m6050_zerodrift->ay;
+  72   1        m6050_structure->az=m6050_getvalue(SlaveAddress,ACCEL_ZOUT_H)-m6050_zerodrift->az;
+  73   1        m6050_structure->gx=m6050_getvalue(SlaveAddress,GYRO_XOUT_H)-m6050_zerodrift->gx;
+  74   1        m6050_structure->gy=m6050_getvalue(SlaveAddress,GYRO_YOUT_H)-m6050_zerodrift->gy;
+  75   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1095    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----      34
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

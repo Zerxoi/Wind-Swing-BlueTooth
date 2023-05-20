@@ -1,0 +1,130 @@
+C51 COMPILER V9.52.0.0   KALMAN                                                            05/17/2017 21:50:30 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE KALMAN
+OBJECT MODULE PLACED IN kalman.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE kalman.c LARGE BROWSE INCDIR(..\Wind Swing) DEBUG OBJECTEXTEND TABS(2)
+
+line level    source
+
+   1          #include "kalman.h"
+   2          #include "m6050.h"
+   3          #include "timer0.h"
+   4          void Kalman_Filter_x(m6050_structdef *m6050_structure,float accanglex,float dpsx)//angleAx 和 gyroGy
+   5          {
+   6   1        static float P[2][2] = {{ 1, 0 },{ 0, 1 }};
+   7   1        static float Pdot[4] ={ 0,0,0,0};
+   8   1        static float q_bias=0, angle_err=0, PCt_0=0, PCt_1=0, E=0, K_0=0, K_1=0, t_0=0, t_1=0;
+   9   1        static float Angle_dot=0;
+  10   1        m6050_structure->angle_x+=(dpsx-q_bias) * dt;
+  11   1        angle_err = accanglex - m6050_structure->angle_x;
+  12   1          
+  13   1        Pdot[0]=Q_angle - P[0][1] - P[1][0];
+  14   1        Pdot[1]=- P[1][1];
+  15   1        Pdot[2]=- P[1][1];
+  16   1        Pdot[3]=Q_gyro;
+  17   1        P[0][0] += Pdot[0] * dt;
+  18   1        P[0][1] += Pdot[1] * dt;
+  19   1        P[1][0] += Pdot[2] * dt;
+  20   1        P[1][1] += Pdot[3] * dt;
+  21   1          
+  22   1        PCt_0 = C_0 * P[0][0];
+  23   1        PCt_1 = C_0 * P[1][0];
+  24   1        E = R_angle + C_0 * PCt_0;
+  25   1        K_0 = PCt_0 / E;
+  26   1        K_1 = PCt_1 / E;
+  27   1          
+  28   1        t_0 = PCt_0;
+  29   1        t_1 = C_0 * P[0][1];
+  30   1        P[0][0] -= K_0 * t_0;
+  31   1        P[0][1] -= K_0 * t_1;
+  32   1        P[1][0] -= K_1 * t_0;
+  33   1        P[1][1] -= K_1 * t_1;
+  34   1        m6050_structure->angle_x += K_0 * angle_err;        //最优角度
+  35   1        q_bias += K_1 * angle_err;
+  36   1        Angle_dot = dpsx-q_bias;        //最优角速度
+  37   1      }
+  38          
+  39          void Kalman_Filter_y(m6050_structdef *m6050_structure,float accangley,float dpsy)//angleAx 和 gyroGy
+  40          {
+  41   1        static float P[2][2] = {{ 1, 0 },{ 0, 1 }};
+  42   1        static float Pdot[4] ={ 0,0,0,0};
+  43   1        static float q_bias=0, angle_err=0, PCt_0=0, PCt_1=0, E=0, K_0=0, K_1=0, t_0=0, t_1=0;
+  44   1        static float Angle_dot=0;
+  45   1        m6050_structure->angle_y+=(dpsy-q_bias) * dt;
+  46   1        angle_err = accangley - m6050_structure->angle_y;
+  47   1          
+  48   1        Pdot[0]=Q_angle - P[0][1] - P[1][0];
+  49   1        Pdot[1]=- P[1][1];
+  50   1        Pdot[2]=- P[1][1];
+  51   1        Pdot[3]=Q_gyro;
+  52   1        P[0][0] += Pdot[0] * dt;
+  53   1        P[0][1] += Pdot[1] * dt;
+  54   1        P[1][0] += Pdot[2] * dt;
+  55   1        P[1][1] += Pdot[3] * dt;
+C51 COMPILER V9.52.0.0   KALMAN                                                            05/17/2017 21:50:30 PAGE 2   
+
+  56   1          
+  57   1        PCt_0 = C_0 * P[0][0];
+  58   1        PCt_1 = C_0 * P[1][0];
+  59   1        E = R_angle + C_0 * PCt_0;
+  60   1        K_0 = PCt_0 / E;
+  61   1        K_1 = PCt_1 / E;
+  62   1          
+  63   1        t_0 = PCt_0;
+  64   1        t_1 = C_0 * P[0][1];
+  65   1        P[0][0] -= K_0 * t_0;
+  66   1        P[0][1] -= K_0 * t_1;
+  67   1        P[1][0] -= K_1 * t_0;
+  68   1        P[1][1] -= K_1 * t_1;
+  69   1        m6050_structure->angle_y += K_0 * angle_err;        //最优角度
+  70   1        q_bias += K_1 * angle_err;
+  71   1        Angle_dot = dpsy-q_bias;        //最优角速度
+  72   1      }
+  73          
+  74          float acc2anglex(m6050_structdef *m6050_structure)//欧拉角?转角
+  75          {
+  76   1        float anglex;
+  77   1        anglex=atan2(m6050_structure->ay,m6050_structure->az)*57.295828;    //  180/pi~=57.295828
+  78   1        return anglex;
+  79   1      }
+  80          
+  81          float acc2angley(m6050_structdef *m6050_structure)
+  82          {
+  83   1        float angley;
+  84   1        angley=atan2(-1*m6050_structure->ax,m6050_structure->az)*57.295828;   //  180/pi~=57.295828
+  85   1        return angley;
+  86   1      }
+  87          
+  88          float gyro2dps(int gyro)
+  89          {
+  90   1        float dps;
+  91   1        dps=gyro/131.072;   //    2^16/500=131.072
+  92   1        return dps;
+  93   1      }
+  94          
+  95          void angle_calcu(m6050_structdef *m6050_structure)
+  96          {
+  97   1        float accanglex,dpsx;
+  98   1        float accangley,dpsy;
+  99   1        accanglex=acc2anglex(m6050_structure);
+ 100   1        accangley=acc2angley(m6050_structure);
+ 101   1        dpsx=gyro2dps(m6050_structure->gx);
+ 102   1        dpsy=gyro2dps(m6050_structure->gy);
+ 103   1        Kalman_Filter_x(m6050_structure,accanglex,dpsx);
+ 104   1        Kalman_Filter_y(m6050_structure,accangley,dpsy);
+ 105   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2789    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =    144      47
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
